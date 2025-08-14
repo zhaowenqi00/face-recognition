@@ -1,0 +1,12 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Model files in result directory
+result/*.pth
+result/class
+result/*.loss
+result/*.matrix

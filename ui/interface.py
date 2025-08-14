@@ -9,15 +9,37 @@ from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QApplication, QFileDialog
 from PyQt5 import uic
 import torch
+
+_ui_dir = os.path.dirname(os.path.abspath(__file__))
+_root_dir = os.path.dirname(_ui_dir)
+os.chdir(_ui_dir)
+sys.path.insert(0, _root_dir)
+
+from data.config import (
+    DETECTOR_MODEL, DETECTOR_PROTO, USER_FILE, RESULT_DIR,
+    RAW_IMAGE_DIR, FACE_IMAGE_DIR,
+)
 from trainmodel import get_face, get_data, train_model, get_photograph
+from models import LeNet, VGGnet, RESNET
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-net = cv2.dnn.readNetFromTensorflow("opencv_face_detector_uint8.pb", "opencv_face_detector.pbtxt")
+
+
+def load_model(path, model_fn, *args, **kwargs):
+    ckpt = torch.load(path, map_location=device)
+    if isinstance(ckpt, dict) and 'model' in ckpt:
+        model = model_fn(*args, **kwargs)
+        model.load_state_dict(ckpt['model'])
+        return model
+    return ckpt
+
+
+net = cv2.dnn.readNetFromTensorflow(DETECTOR_MODEL, DETECTOR_PROTO)
 
 
 class Login:
     def __init__(self):
-        self.ui_login = uic.loadUi('Login.ui')
+        self.ui_login = uic.loadUi('login.ui')
         login_bt = self.ui_login.login
         login_bt.clicked.connect(self.Login_)
         register_bt = self.ui_login.register_2
@@ -28,7 +50,7 @@ class Login:
     def Login_(self):
         username = self.ui_login.key.text()
         password = self.ui_login.value.text()
-        user = pickle.load(open('user', 'rb'))
+        user = pickle.load(open(USER_FILE, 'rb'))
         if username in user.keys() and user[username] == password:
             self.dlg = MainWindow()
             self.dlg.ui.show()
@@ -50,14 +72,14 @@ class Register:
         password2 = self.ui_register.lineEdit3.text()
         if username != "":
             if password1 == password2:
-                user = pickle.load(open('user', 'rb'))
+                user = pickle.load(open(USER_FILE, 'rb'))
                 user[username] = password1
-                pickle.dump(user, open('user', "wb"), protocol=4)
+                pickle.dump(user, open(USER_FILE, "wb"), protocol=4)
 
 
 class MainWindow:
     def __init__(self):
-        self.ui = uic.loadUi('untitled.ui')
+        self.ui = uic.loadUi('home.ui')
         bt = self.ui.pushButton
         bt1 = self.ui.pushButton1
         bt2 = self.ui.pushButton2
@@ -100,33 +122,33 @@ class MainWindow:
 class photo_Face_R:
     def __init__(self, model):
         self.img = None
-        self.ui = uic.loadUi('untitled6.ui')
+        self.ui = uic.loadUi('photo_recognition.ui')
         self.model_ = self.ui.label_3
         self.model_.setText(model)
         self.label = self.ui.label
-        if model == "LeNet-5":
-            self.model = torch.load('LeNet-5.pth')
-        elif model == "VGGNet":
-            self.model = torch.load('VGGNet.pth')
-        else:
-            self.model = torch.load('ResNet.pth')
+        names_dic = pickle.load(open(os.path.join('..', 'result', 'class'), 'rb'))
+        n_class = len(names_dic)
+        model_map = {"LeNet-5": LeNet, "VGGNet": VGGnet}
+        self.model = load_model(os.path.join('..', 'result', model + '.pth'), model_map.get(model, RESNET), 128, 1, n_class)
         self.model.eval()
-        self.names_dic = pickle.load(open('class', 'rb'))
+        self.names_dic = names_dic
         bt1 = self.ui.pushButton1
         bt2 = self.ui.pushButton2
         bt1.clicked.connect(self.open_files)
         bt2.clicked.connect(self.recognition)
 
     def open_files(self):
-        folder_path = QFileDialog.getOpenFileName(self.ui,"选择图片", "E:/image1")
-        self.img = cv2.imread(folder_path[0])
+        folder_path = QFileDialog.getOpenFileName(self.ui,"选择图片", RAW_IMAGE_DIR)
+        if not folder_path[0]:
+            return
+        self.img = cv2.imdecode(np.fromfile(folder_path[0], dtype=np.uint8), cv2.IMREAD_COLOR)
         show = cv2.resize(self.img, (670, 430))
         show = cv2.cvtColor(show, cv2.COLOR_BGR2RGB)
         showImage = QImage(show.data, show.shape[1], show.shape[0], show.shape[1] * 3, QImage.Format_RGB888)
         self.label.setPixmap(QPixmap.fromImage(showImage))
         # print(folder_path[0])
     def recognition(self):
-        gray_img = cv2.cvtColor(self.img, cv2.COLOR_BGRA2GRAY)
+        gray_img = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
         height, width, _ = self.img.shape
 
         # 创建一个blob从图片，然后通过网络进行前向传播
@@ -159,7 +181,7 @@ class photo_Face_R:
                 outputs = self.model(inputs)
                 outputs_lable = outputs.argmax(dim=1)
                 # # 利用姓名字典还原真实姓名
-                cv2.putText(self.img, self.names_dic[int(outputs_lable[0])], (startX, startY - 20), cv2.FONT_HERSHEY_SIMPLEX,
+                cv2.putText(self.img, self.names_dic[int(outputs_lable[0].item())], (startX, startY - 20), cv2.FONT_HERSHEY_SIMPLEX,
                             2, 255, 3)
         show = cv2.resize(self.img, (670, 430))
         show = cv2.cvtColor(show, cv2.COLOR_BGR2RGB)
@@ -169,20 +191,18 @@ class photo_Face_R:
 
 class Face_Recognition:
     def __init__(self, model):
-        self.ui = uic.loadUi('untitled2.ui')
+        self.ui = uic.loadUi('camera_recognition.ui')
         self.model_ = self.ui.label_3
         self.model_.setText(model)
         self.timer_camera = QTimer()  # 初始化定时器
         self.cap = cv2.VideoCapture()  # 初始化摄像头
         self.CAM_NUM = 0
-        if model == "LeNet-5":
-            self.model = torch.load('LeNet-5.pth')
-        elif model == "VGGNet":
-            self.model = torch.load('VGGNet.pth')
-        else:
-            self.model = torch.load('ResNet.pth')
+        names_dic = pickle.load(open(os.path.join('..', 'result', 'class'), 'rb'))
+        n_class = len(names_dic)
+        model_map = {"LeNet-5": LeNet, "VGGNet": VGGnet}
+        self.model = load_model(os.path.join('..', 'result', model + '.pth'), model_map.get(model, RESNET), 128, 1, n_class)
         self.model.eval()
-        self.names_dic = pickle.load(open('class', 'rb'))
+        self.names_dic = names_dic
         # print(self.names_dic)
         bt1 = self.ui.pushButton1
         bt2 = self.ui.pushButton2
@@ -211,7 +231,7 @@ class Face_Recognition:
         self.label.clear()
 
     def face_detect_method(self, img):
-        gray_img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         height, width, _ = img.shape
 
         # 创建一个blob从图片，然后通过网络进行前向传播
@@ -245,14 +265,14 @@ class Face_Recognition:
                 outputs_lable = outputs.argmax(dim=1)
                 # print(outputs_lable[0])
                 # # 利用姓名字典还原真实姓名
-                cv2.putText(img, self.names_dic[int(outputs_lable[0])], (startX, startY - 20), cv2.FONT_HERSHEY_SIMPLEX,
+                cv2.putText(img, self.names_dic[int(outputs_lable[0].item())], (startX, startY - 20), cv2.FONT_HERSHEY_SIMPLEX,
                             1, 255, 2)
         return img
 
 
 class management_data:
     def __init__(self, name):
-        self.ui = uic.loadUi('untitled3.ui')
+        self.ui = uic.loadUi('data_management.ui')
         self.modname = name
         bt1 = self.ui.pushButton1
         bt2 = self.ui.pushButton2
@@ -265,7 +285,7 @@ class management_data:
         bt4.clicked.connect(self.train_model)
 
     def show_face_people(self):
-        path = 'E:/image1/'
+        path = RAW_IMAGE_DIR
         names = os.listdir(path)
         name = '姓名：\n'
         for i in names:
@@ -291,7 +311,7 @@ class management_data:
 
 class Add_Face:
     def __init__(self):
-        self.ui = uic.loadUi('untitled4.ui')
+        self.ui = uic.loadUi('add_face.ui')
         bt = self.ui.pushButton
         self.label = self.ui.label_2
         self.timer_camera = QTimer()  # 初始化定时器
@@ -325,21 +345,24 @@ class Add_Face:
 
 class Del_Face:
     def __init__(self):
-        self.ui = uic.loadUi('untitled5.ui')
+        self.ui = uic.loadUi('del_face.ui')
         bt = self.ui.pushButton
         self.label = self.ui.label_2
         bt.clicked.connect(self.del_)
 
     def del_(self):
         name = self.ui.lineEdit.text()
-        if os.path.exists('E:/image1/' + name):
-            shutil.rmtree('E:/image1/' + name)
+        name_path = os.path.join(RAW_IMAGE_DIR, name)
+        if os.path.exists(name_path):
+            shutil.rmtree(name_path)
             self.label.setText("成功删除")
         else:
             self.label.setText("无此人人脸数据")
 
 
 app = QApplication([])
+if not os.path.exists(USER_FILE):
+    pickle.dump({}, open(USER_FILE, 'wb'))
 system = Login()
 system.ui_login.show()
 app.exec()

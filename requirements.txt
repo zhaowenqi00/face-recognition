@@ -1,0 +1,29 @@
+# =============================================
+# Installation options (choose one, Option 1 recommended):
+#
+# Option 1: Tsinghua mirror (fast in China)
+#   pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+#
+# Option 2: Aliyun mirror
+#   pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
+#
+# Option 3: Official PyPI (if network allows)
+#   pip install -r requirements.txt -i https://pypi.org/simple
+#
+# If you already have GPU torch installed, install only other deps:
+#   pip install opencv-python numpy PyQt5 matplotlib tqdm scikit-learn pandas sympy openpyxl -i https://pypi.tuna.tsinghua.edu.cn/simple
+# =============================================
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+torchvision>=0.15.0
+
+opencv-python>=4.8.0
+numpy>=1.24.0
+PyQt5>=5.15.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+scikit-learn>=1.3.0
+pandas>=2.0.0
+sympy>=1.12
+openpyxl>=3.1.0

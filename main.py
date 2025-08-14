@@ -8,16 +8,19 @@ from matplotlib import pyplot as plt
 from sympy.tensor import tensor
 from torch import nn
 from tqdm import trange
-from VGGNET import VGGnet
-from RESNET import RESNET
-from LENET import LeNet
+from models import VGGnet, RESNET, LeNet
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 torch.cuda.empty_cache()
+
+RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
+if not os.path.exists(RESULT_DIR):
+    os.makedirs(RESULT_DIR)
+
 # 切分训练集和测试集
-path = 'E:/face_images_lian/'
-names = os.listdir(path)
+from data.config import FACE_IMAGE_DIR, RESULT_DIR
+names = os.listdir(FACE_IMAGE_DIR)
 names_dic = {}
 
 x_train = []
@@ -26,7 +29,7 @@ y_train = []
 y_test = []
 sum_z = 0
 for i in range(len(names)):
-    img_names = os.listdir(path + names[i])
+    img_names = os.listdir(os.path.join(FACE_IMAGE_DIR, names[i]))
     len_ = len(img_names)
     if len_ > 20:
         names_dic[sum_z] = names[i]
@@ -34,10 +37,10 @@ for i in range(len(names)):
         len_test = 16
         for j in range(len(img_names) - len_test):
             y_train.append(sum_z)
-            img = cv2.imread(path + names[i] + '/' + img_names[j], 0)
+            img = cv2.imread(os.path.join(FACE_IMAGE_DIR, names[i], img_names[j]), 0)
             x_train.append(img)
         for j in range(len(img_names) - len_test, len(img_names)):
-            img = cv2.imread(path + names[i] + '/' + img_names[j], 0)
+            img = cv2.imread(os.path.join(FACE_IMAGE_DIR, names[i], img_names[j]), 0)
             x_test.append(img)
             y_test.append(sum_z)
         sum_z += 1
@@ -218,8 +221,8 @@ if __name__ == '__main__':
     print("Loss: {:.4f}".format(sum_loss / (i + 1)))
     print('结果字典：', classify)
 
-    torch.save({'model': model.state_dict()}, '../result/' + model_name + '.pth')
-    pickle.dump(loss_, open('../result/' + model_name + '.loss', "wb"), protocol=4)
-    pickle.dump(classify, open('../result/' + model_name + '.matrix', "wb"), protocol=4)
+    torch.save({'model': model.state_dict()}, os.path.join(RESULT_DIR, model_name + '.pth'))
+    pickle.dump(loss_, open(os.path.join(RESULT_DIR, model_name + '.loss'), "wb"), protocol=4)
+    pickle.dump(classify, open(os.path.join(RESULT_DIR, model_name + '.matrix'), "wb"), protocol=4)
 
 
